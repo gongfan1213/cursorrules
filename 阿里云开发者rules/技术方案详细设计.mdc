@@ -1,0 +1,450 @@
+
+# 技术方案设计文档规范
+
+## 关键规则
+- 技术方案文档必须遵循规定的章节结构，包括名词解释、领域模型、应用调用关系和详细方案设计四个主要部分
+- 名词解释部分必须建立业务和技术的统一语言，确保术语简单易懂
+- 领域模型需清晰表达业务实体及其关系，可使用UML图或ER图进行可视化
+- 应用调用关系必须体现跨应用的接口调用关系和MQ的生产消费关系
+- 详细方案设计应按应用和业务流程进行分类，对每个接口的改动点、代码分层和文档变更进行详细说明
+- 代码改动点需重点突出实现思路，而不仅是罗列代码变更
+- 对外接口协议的所有变更（包括字段变更等）必须在接口文档中明确体现
+- 首先明确项目是否使用GBF框架，并选择相应的技术方案设计模板
+- 使用GBF框架的项目，需明确说明各层级服务规划及扩展点设计
+- 非GBF框架项目，应明确说明标准分层架构设计
+## 架构识别与方案适配
+### 如何判断项目是否使用GBF框架
+- 代码中存在Process、NodeService、DomainService等类或注解
+- 存在Ability接口和Action实现类
+- 包结构中有platform、node、domain、ability等目录
+- 有明确的扩展点机制和BizCode、Scenario路由
+### 方案适配策略
+- 使用GBF框架的项目，技术方案需关注扩展点设计和流程编排
+- 非GBF框架项目，技术方案关注传统分层设计和接口实现
+- 在方案开头明确说明项目所使用的架构模式
+- 根据架构特点选择适当的设计模式和描述方式
+## 技术方案设计文档模板
+```markdown
+# 技术方案设计文档：[方案名称]
+## 文档信息
+- 作者：[作者姓名]
+- 版本：[版本号，如v1.0]
+- 日期：[创建/更新日期]
+- 状态：[草稿/已评审/已确认]
+- 架构类型：[GBF框架/非GBF框架] - 版本：[框架版本号]
+# 一、名词解释
+[建立业务和技术的统一语言，尽量简单易懂]
+| 术语 | 解释 |
+|------|------|
+| 术语1 | 含义说明 |
+| 术语2 | 含义说明 |
+# 二、领域模型
+[描述业务领域中的核心实体及其关系，推荐使用UML图表示]
+## 核心实体
+[列出核心业务实体及其属性、行为]
+## 实体关系
+[描述实体间的关系，可使用ER图]
+```mermaid
+classDiagram
+    Class01 <|-- AveryLongClass : Cool
+    Class03 *-- Class04
+    Class05 o-- Class06
+    Class07 .. Class08
+    Class09 --> C2 : Where am I?
+    Class09 --* C3
+    Class09 --|> Class07
+    Class07 : equals()
+    Class07 : Object[] elementData
+    Class01 : size()
+    Class01 : int chimp
+    Class01 : int gorilla
+    Class08 <--> C2: Cool label
+```
+# 三、应用调用关系
+[体现跨应用的接口调用关系、MQ的生产消费关系]
+## 系统架构图
+[系统整体架构图，展示系统组件和交互关系]
+```mermaid
+flowchart TD
+    A[应用1] -->|接口调用| B[应用2]
+    B -->|消息发送| C[消息队列]
+    D[应用3] -->|消息消费| C
+    D -->|数据存储| E[(数据库)]
+```
+## 时序图
+[关键流程的时序图，展示组件间的交互顺序]
+```mermaid
+sequenceDiagram
+    参与者A->>参与者B: 请求数据
+    参与者B->>参与者C: 转发请求
+    参与者C-->>参与者B: 返回数据
+    参与者B-->>参与者A: 处理后返回
+```
+# 四、详细方案设计
+## 架构选型
+[说明本方案采用的架构模式，如标准三层架构、GBF框架架构等]
+### 分层架构说明
+[描述本方案的分层架构，说明各层职责]
+#### 标准分层架构（非GBF框架项目）
+```
+# HTTP接口方式
+- Controller层：处理HTTP请求，参数校验
+- Service层：实现业务逻辑
+- Repository层：数据访问和持久化
+- Domain层：领域模型和业务规则
+# HSF/RPC服务方式
+- Provider层：服务提供者，定义和实现HSF服务接口
+- Service层：实现业务逻辑
+- Repository层：数据访问和持久化
+- Domain层：领域模型和业务规则
+```
+### 数据模型设计
+[描述数据模型的设计，包括不同层次的数据模型]
+```
+# 标准数据模型（非GBF框架项目）
+- DTO(Data Transfer Object)：接口层数据传输对象
+- BO(Business Object)：业务逻辑层数据对象
+- DO(Domain Object)：领域模型对象
+- PO(Persistent Object)：持久化对象
+# GBF框架数据模型（GBF框架项目）
+- DTO：对接客户端，透出业务流程结果
+- DO：封装核心领域逻辑，定义服务入口
+- PO：与数据库交互，屏蔽存储细节
+```
+## 应用1
+### 业务流程1
+#### xxx接口
+**接口说明**：[详细说明接口的用途和功能]
+**接口路径**：[HTTP方法] [路径] 或 [HSF服务接口定义]
+**请求参数**：
+```json
+{
+  "param1": "value1",
+  "param2": "value2"
+}
+```
+**返回结果**：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "field1": "value1",
+    "field2": "value2"
+  }
+}
+```
+#### 接口改动点
+[说明接口的改动类型：新增、能力调整、扩展等，并详述改动内容]
+#### 代码分层设计
+[描述代码的分层结构，确保符合工程规范]
+##### 标准分层设计（非GBF框架项目）
+```
+# HTTP接口方式
+- Controller层：处理HTTP请求，参数校验
+  - 职责：参数校验、请求处理、结果封装
+  - 代码位置：web包、controller包
+  - 设计要点：保持轻量，不包含业务逻辑
+- Service层：实现业务逻辑
+  - 职责：实现业务逻辑、编排服务调用、事务管理
+  - 代码位置：service包、manager包
+  - 设计要点：聚合与编排，可包含复杂业务逻辑
+- Repository层：数据访问和持久化
+  - 职责：封装数据访问逻辑，实现数据持久化
+  - 代码位置：repository包、dao包
+  - 设计要点：封装数据库操作，提供数据访问接口
+- Domain层：领域模型和业务规则
+  - 职责：定义领域模型，实现领域规则
+  - 代码位置：domain包、model包
+  - 设计要点：领域驱动设计，封装核心业务规则
+```
+##### GBF框架分层设计（GBF框架项目）
+```
+# Process定义（Platform层）
+- 职责：编排NodeService，形成完整业务流程
+- 代码位置：platform包
+- 设计要点：
+  - Process作为最上层逻辑，直接承接接口请求
+  - 通过Spring Bean声明Process流程配置
+  - Process只能调用NodeService，不能跨层调用
+  - 不应包含具体业务逻辑，专注于流程编排
+# NodeService实现（Node层）
+- 职责：组合多个DomainService，形成标准化服务入口
+- 代码位置：node包
+- 设计要点：
+  - NodeService作为标准化服务入口
+  - 禁止NodeService之间相互调用
+  - 通过扩展点控制节点级逻辑(如前置校验)
+  - 不应包含复杂业务逻辑，主要负责编排
+# DomainService实现（Domain层）
+- 职责：提供原子级业务能力
+- 代码位置：domain包
+- 设计要点：
+  - DomainService提供原子级业务能力
+  - 禁止DomainService之间相互调用
+  - 依赖扩展点接口实现逻辑分支控制
+  - 包含特定领域的核心业务逻辑
+# 扩展点设计（Ability层与App层）
+- 职责：定义扩展点接口和实现
+- 代码位置：
+  - 接口定义：ability包
+  - 行业实现：app包下对应行业目录
+  - 场景实现：domain/node包下对应scenario目录
+- 设计要点：
+  - 统一在Ability层声明扩展点接口
+  - 行业定制实现放在App层(如/app/food/)
+  - 场景定制实现放在Domain/Node包下
+  - 扩展点必须有默认实现，保证基础功能可用
+```
+#### 扩展点设计（GBF框架项目）
+[详细说明本功能涉及的扩展点设计]
+```java
+# 扩展点接口（Ability层）
+package com.amap.xxx.ability;
+/**
+ * [扩展点名称]能力
+ */
+public interface XxxAbility {
+    /**
+     * [方法说明]
+     * @param request 请求参数
+     * @return 处理结果
+     */
+    Result doSomething(XxxRequest request);
+}
+# 扩展点实现路由条件
+- BizCode：[业务码，如"FOOD"、"RETAIL"]
+- Scenario：[场景码，如"C2C"、"B2C"]
+- 优先级规则：
+  1. 精确匹配（BizCode + Scenario）
+  2. 按场景降级匹配
+  3. 使用默认实现
+# 扩展点默认实现（Ability层）
+package com.amap.xxx.ability.impl;
+/**
+ * [扩展点名称]默认实现
+ */
+publicclassDefaultXxxActionimplementsXxxAbility {
+    @Override
+    public Result doSomething(XxxRequest request){
+        // 默认实现逻辑
+        return Result.success();
+    }
+}
+# 扩展点行业定制实现（App层）
+package com.amap.xxx.app.food;
+/**
+ * [行业名称][扩展点名称]实现
+ */
+@Extension(bizId = "FOOD")
+publicclassFoodXxxActionimplementsXxxAbility {
+    @Override
+    public Result doSomething(XxxRequest request){
+        // 行业特定实现逻辑
+        return Result.success();
+    }
+}
+# 扩展点场景定制实现（Domain/Node层）
+package com.amap.xxx.domain.scenario.b2c;
+/**
+ * [场景名称][扩展点名称]实现
+ */
+@Extension(scenario = "B2C")
+publicclassB2CXxxActionimplementsXxxAbility {
+    @Override
+    public Result doSomething(XxxRequest request){
+        // 场景特定实现逻辑
+        return Result.success();
+    }
+}
+```
+##### 路由条件设计
+[说明扩展点的路由条件设计]
+```
+# 路由维度
+- 业务维度（BizCode）：区分不同行业，如"FOOD"、"RETAIL"
+- 场景维度（Scenario）：区分不同场景，如"C2C"、"B2C"
+- 其他维度：用户类型、渠道等
+# 路由策略
+- 优先级1：精确匹配（BizCode=A + Scenario=B）
+- 优先级2：业务码匹配（BizCode=A）
+- 优先级3：场景码匹配（Scenario=B）
+- 优先级4：默认实现
+# 降级策略
+如果找不到满足条件的扩展点实现，按优先级顺序降级匹配，
+直到找到默认实现
+```
+#### 代码改动点
+[详述需要改动的代码，重点说明实现思路]
+1. Controller/Provider层改动：
+   - 新增XX控制器/服务提供者
+   - 修改YY方法参数
+2. Service层改动：
+   - 新增XX服务
+   - 调整YY逻辑处理流程
+3. GBF框架特定改动(GBF框架项目)：
+   - 新增Process流程定义
+   - 新增NodeService节点服务
+   - 新增扩展点接口与实现
+   - 修改扩展点路由规则
+## 数据库变更
+### 表结构设计
+[描述需要新增或修改的数据库表结构]
+#### 表名：[表名]
+| 字段名 | 数据类型 | 是否为空 | 主键 | 注释 |
+|-------|---------|---------|------|------|
+| id | bigint | 否 | 是 | 主键ID |
+| ... | ... | ... | ... | ... |
+### 索引设计
+[描述需要新增或修改的索引]
+| 索引名 | 字段 | 索引类型 | 说明 |
+|-------|------|---------|------|
+| idx_xxx | 字段1, 字段2 | 普通/唯一/主键 | 索引说明 |
+## 接口文档变更
+[描述需要新增或修改的接口文档]
+### 接口名：[接口名]
+- 接口路径：[HTTP方法] [路径] 或 [HSF服务接口定义]
+- 变更类型：[新增/修改/删除]
+- 变更说明：[详细说明接口变更]
+## 配置变更
+[描述需要新增或修改的配置]
+### 配置类型：[配置类型]
+- 配置名：[配置名]
+- 配置值：[配置值]
+- 说明：[配置说明]
+## 非功能性需求
+### 性能需求
+[描述性能需求，如响应时间、并发量等]
+### 可用性需求
+[描述可用性需求，如系统可用率、故障恢复能力等]
+### 扩展性需求
+[描述扩展性需求，如系统的可扩展性、可伸缩性等]
+## 兼容性与平滑迁移方案
+[描述系统升级的兼容性问题及平滑迁移方案]
+### 兼容性问题
+[描述可能的兼容性问题]
+### 平滑迁移方案
+[描述平滑迁移的方案]
+## 风险与应对措施
+[描述可能的风险及应对措施]
+| 风险 | 可能性 | 影响 | 应对措施 |
+|------|-------|------|---------|
+| 风险1 | 高/中/低 | 高/中/低 | 应对措施1 |
+| 风险2 | 高/中/低 | 高/中/低 | 应对措施2 |
+```
+## 示例
+### 非GBF框架项目技术方案示例
+<example>
+## 代码分层设计
+### 添加商品API的实现结构如下：
+```
+# Controller层
+- com.amap.mall.web.controller.ProductController
+  - 职责：接收HTTP请求，校验参数，调用Service层，封装返回结果
+  - 主要方法：addProduct(AddProductRequest request)
+# Service层
+- com.amap.mall.service.ProductService (接口)
+- com.amap.mall.service.impl.ProductServiceImpl (实现)
+  - 职责：处理业务逻辑，调用Repository层，实现事务控制
+  - 主要方法：addProduct(ProductDO product)
+# Repository层
+- com.amap.mall.repository.ProductRepository (接口)
+- com.amap.mall.repository.impl.ProductRepositoryImpl (实现)
+  - 职责：封装数据访问逻辑，调用DAO层
+  - 主要方法：insert(ProductPO product)
+# DAO层
+- com.amap.mall.dao.ProductDAO
+  - 职责：与数据库交互，执行SQL
+  - 主要方法：insert(ProductPO product)
+```
+根据上述设计，添加商品功能的调用链为：
+1. 客户端调用ProductController.addProduct()
+2. Controller校验参数并调用ProductService.addProduct()
+3. Service处理业务逻辑并调用ProductRepository.insert()
+4. Repository转换对象并调用ProductDAO.insert()
+5. DAO执行SQL插入数据
+</example>
+### GBF框架项目技术方案示例
+<example>
+## GBF框架分层设计
+### 添加搭售规则功能的实现结构如下：
+```
+# Process层（Platform层）
+- com.amap.mall.tying.platform.CreateRuleProcess
+  - 职责：定义搭售规则创建流程，编排NodeService调用顺序
+  - 流程节点：参数校验 -> 商品信息获取 -> 规则冲突检查 -> 规则持久化
+# NodeService层（Node层）
+- com.amap.mall.tying.node.ValidateRuleNodeService
+  - 职责：实现规则参数校验节点
+  - 使用扩展点：RuleValidateAbility（规则校验能力）
+- com.amap.mall.tying.node.CheckConflictNodeService
+  - 职责：实现规则冲突检查节点
+  - 使用扩展点：ConflictCheckAbility（冲突检查能力）
+- com.amap.mall.tying.node.PersistRuleNodeService
+  - 职责：实现规则持久化节点
+  - 使用扩展点：RulePersistAbility（规则持久化能力）
+# DomainService层（Domain层，可选）
+- com.amap.mall.tying.domain.service.ItemInfoDomainService
+  - 职责：获取商品信息的原子能力服务
+  - 使用扩展点：ItemInfoAbility（商品信息获取能力）
+# Ability层（扩展点接口定义）
+- com.amap.mall.tying.ability.RuleValidateAbility
+  - 职责：定义规则校验的扩展点接口
+  - 方法：validate(RuleRequest request)
+- com.amap.mall.tying.ability.ConflictCheckAbility
+  - 职责：定义冲突检查的扩展点接口
+  - 方法：check(RuleRequest request)
+# App层（行业定制实现）
+- com.amap.mall.tying.app.food.FoodRuleValidateAction
+  - 职责：实现食品行业特定的规则校验逻辑
+  - 路由条件：@Extension(bizId = "FOOD")
+- com.amap.mall.tying.app.retail.RetailRuleValidateAction
+  - 职责：实现零售行业特定的规则校验逻辑
+  - 路由条件：@Extension(bizId = "RETAIL")
+# 默认实现（Ability层实现）
+- com.amap.mall.tying.ability.impl.DefaultRuleValidateAction
+  - 职责：实现默认的规则校验逻辑
+  - 应用场景：当不满足任何行业/场景定制条件时
+```
+扩展点路由设计：
+1. 按业务码（bizId）路由：不同行业的定制实现
+   - FOOD -> FoodRuleValidateAction
+   - RETAIL -> RetailRuleValidateAction
+2. 按场景码（scenario）路由：不同场景的定制实现
+   - B2C -> B2CRuleValidateAction
+   - C2C -> C2CRuleValidateAction
+3. 精确匹配：同时匹配业务码和场景码
+   - FOOD + B2C -> FoodB2CRuleValidateAction
+4. 降级策略：找不到匹配的实现时，使用默认实现
+   - 默认 -> DefaultRuleValidateAction
+</example>
+<example type="invalid">
+## 技术方案设计
+我们将实现一个新的搭售规则管理功能。
+开发计划：
+1. 添加新的Controller处理HTTP请求
+2. 添加新的Service处理业务逻辑
+3. 添加新的DAO访问数据库
+（错误原因：没有明确说明项目使用的架构类型，缺乏分层设计的详细说明，没有明确接口定义和实现方式，对于GBF项目没有说明扩展点设计）
+</example>
+## 方案设计工作流程
+1. **架构识别阶段**
+   - 确定项目使用的架构类型(GBF/非GBF)
+   - 识别关键架构组件和分层结构
+   - 确定方案设计重点和特殊要求
+   - 选择适合的方案模板
+2. **需求分析阶段**
+   - 确定功能边界和核心业务流程
+   - 识别核心业务实体和领域模型
+   - 确定接口定义和数据结构
+   - 识别可能的扩展点和变化点
+3. **方案设计阶段**
+   - 根据架构特点进行分层设计
+   - 确定接口实现和组件交互
+   - 设计数据库结构和索引
+   - 对于GBF项目，设计扩展点和路由规则
+4. **方案评审阶段**
+   - 验证方案与架构的一致性
+   - 验证功能覆盖度和完整性
+   - 评估技术风险和性能问题
+   - 确保方案文档结构清晰、内容完整
