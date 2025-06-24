@@ -1,0 +1,279 @@
+
+---
+description: 此规则适用于go项目的开发规范，技术方案设计文档的编写保证核心代码符合规范，写代码遵守该规范，确保开发质量和效率。
+globs:
+alwaysApply: false
+---
+# Go项目开发规范
+## 项目结构规范
+- 采用领域驱动设计(DDD)分层架构，明确划分为以下层次：
+  - `controller` 层：处理 HTTP 请求，参数验证，路由转发
+  - `logic` 层：实现核心业务逻辑，协调各个组件和服务调用
+  - `model` 层：数据访问和持久化，定义数据结构
+  - `framework` 层：基础设施和通用工具
+  - `hsf` 层：服务调用接口定义和实现
+- **依赖方向**
+  - 严格遵循依赖方向：controller → logic → model
+  - 禁止循环依赖
+  - 上层模块不能依赖于下层模块实现细节，应通过接口进行依赖
+## 编码规范
+### 命名约定
+- **包名命名**
+  - 使用小写单词，不使用下划线或混合大小写
+  - 使用简短、具有描述性的名称
+  - 例如：`model`、`controller`、`logic`
+- **文件命名**
+  - 使用小写字母，使用下划线分隔单词
+  - 例如：`user_service.go`、`order_model.go`
+- **变量命名**
+  - 使用驼峰命名法
+  - 局部变量使用小驼峰（`userID`）
+  - 全局变量使用大驼峰（`UserService`）
+  - 常量使用全大写，下划线分隔（`MAX_RETRY_COUNT`）
+- **接口和结构体命名**
+  - 使用大驼峰命名法
+  - 接口名应以 "er" 结尾表示行为，如 `Reader`、`Writer`
+  - 避免使用 "I" 前缀表示接口
+### 代码组织
+- **结构体字段顺序**
+  - 首先是导出字段，然后是非导出字段
+  - 相关字段应分组在一起
+- **函数声明顺序**
+  - 先声明类型和常量，然后是变量
+  - 接着是初始化函数（`init()`）
+  - 最后是其他方法，按重要性或调用关系排序
+- **import 声明**
+  - 将 import 分组为标准库、第三方库和内部包
+  - 组之间用空行分隔
+  - 使用 goimports 自动排序
+```go
+import(
+    "context"
+    "fmt"
+    "time"
+    "github.com/gin-gonic/gin"
+    "github.com/pkg/errors"
+    "amap-aos-activity/framework/mlogger"
+    "amap-aos-activity/model/base"
+)
+```
+## 错误处理规范
+- **使用项目标准错误类型**
+  - 使用 `common.Error` 统一封装业务错误
+  - 保持错误码和错误信息的一致性
+- **错误传播**
+  - 在逻辑层中，使用 `errors.Wrap` 包装错误以保留堆栈信息
+  - 谨慎处理空指针和边界情况
+- **错误日志记录**
+  - 只在错误发生的源头记录日志，避免重复记录
+  - 使用项目统一的日志框架 `mlogger`
+  - 在记录错误时包含足够的上下文信息
+```go
+if err !
+= nil {
+    tracelogger.XErrorf(ctx, "failed to query data: %v", err)
+    return nil, common.NewError(common.ErrCodeDB, "数据查询失败")
+}
+```
+## 并发处理规范
+- **使用 context 进行超时控制**
+  - 所有长时间运行的操作都应接受 context 参数
+  - 及时检查和响应 context 取消信号
+- **并发安全**
+  - 使用 mutex、atomic 或 channel 来保护共享资源
+  - 避免 goroutine 泄漏，确保所有 goroutine 都能正确退出
+  - 使用项目提供的 `errgroup` 包管理并发任务
+- **资源控制**
+  - 使用 worker pool 或信号量控制并发数量
+  - 使用项目提供的框架组件进行异步任务处理
+## 性能优化规范
+- **避免不必要的内存分配**
+  - 预分配已知大小的切片和 map
+  - 使用 pointer 传递大结构体
+  - 使用 sync.Pool 复用临时对象
+- **高效的 IO 操作**
+  - 使用缓冲 IO
+  - 批量处理数据库操作
+  - 实现合理的缓存策略，使用 mcache 或 mredis
+- **高效的 JSON 处理**
+  - 使用项目指定的高性能 JSON 库（sonic）
+  - 对频繁使用的结构体预定义字段标签
+## 测试规范
+- **单元测试覆盖**
+  - 为所有关键业务逻辑编写单元测试
+  - 使用表驱动测试方法
+  - 测试文件与被测试文件放在同一目录，使用 `_test.go` 后缀
+- **模拟外部依赖**
+  - 使用接口和依赖注入以便于测试
+  - 使用 mock 框架模拟外部服务和数据库
+- **基准测试**
+  - 为性能关键路径编写基准测试
+  - 使用性能分析工具发现瓶颈
+## 项目标准组件使用指南
+- **日志记录**
+  - 使用 `mlogger` 包进行日志记录
+  - 在关键流程节点记录日志，但避免过度记录
+- **配置管理**
+  - 使用 `mconfig` 包读取配置
+  - 避免硬编码配置值
+- **HTTP 客户端**
+  - 使用 `mhttp` 包进行 HTTP 调用
+  - 设置合理的超时和重试策略
+- **缓存使用**
+  - 使用 `mcache` 或 `mredis` 实现缓存
+  - 实现合适的缓存失效策略
+## 代码示例
+### Controller 层示例
+```go
+// controller/example/example.go
+package example
+import (
+    "context"
+    "github.com/gin-gonic/gin"
+    "amap-aos-activity/framework/mlogger"
+    "amap-aos-activity/logic/example"
+)
+// Handler 处理HTTP请求
+func Handler(c *gin.Context) {
+    ctx := c.Request.Context()
+    // 参数解析与验证
+    var req struct {
+        UserID string `json:"userId" binding:"required"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        mlogger.XWarnf(ctx, "invalid request: %v", err)
+        c.JSON(400, gin.H{"code": "INVALID_PARAM", "message": "参数不合法"})
+        return
+    }
+    // 调用逻辑层
+    resp, err := example.ProcessRequest(ctx, req)
+    if err != nil {
+        c.JSON(500, gin.H{"code": err.Code, "message": err.Message})
+        return
+    }
+    c.JSON(200, resp)
+}
+```
+### Logic 层示例
+```go
+// logic/example/processor.go
+package example
+import (
+    "context"
+    "github.com/pkg/errors"
+    "amap-aos-activity/basic/common"
+    "amap-aos-activity/framework/mlogger"
+    "amap-aos-activity/model/example"
+)
+// ProcessRequest 处理业务逻辑
+func ProcessRequest(ctx context.Context, req interface{}) (interface{}, *common.Error) {
+    // 类型断言
+    request, ok := req.(struct{ UserID string })
+    if !ok {
+        return nil, common.NewError(common.ErrCodeParam, "请求参数类型错误")
+    }
+    // 业务逻辑处理
+    data, err := example.GetUserData(ctx, request.UserID)
+    if err != nil {
+        mlogger.XErrorf(ctx, "failed to get user data: %+v", errors.WithStack(err))
+        return nil, common.NewError(common.ErrCodeService, "获取用户数据失败")
+    }
+    // 返回结果
+    returnmap[string]interface{}{
+        "userId": request.UserID,
+        "data": data,
+    }, nil
+}
+```
+### Model 层示例
+```go
+// model/example/user_model.go
+package example
+import (
+    "context"
+    "time"
+    "github.com/pkg/errors"
+    "amap-aos-activity/framework/mdb"
+    "amap-aos-activity/framework/mcache"
+)
+// UserData 表示用户数据
+type UserData struct {
+    UserID    string    `json:"userId" db:"user_id"`
+    Name      string    `json:"name" db:"name"`
+    CreatedAt time.Time `json:"createdAt" db:"created_at"`
+}
+// GetUserData 从数据库获取用户数据
+func GetUserData(ctx context.Context, userID string) (*UserData, error) {
+    // 尝试从缓存获取
+    cacheKey := "user_data:" + userID
+    var userData UserData
+    cached, err := mcache.Get(ctx, cacheKey, &userData)
+    if err == nil && cached {
+        return &userData, nil
+    }
+    // 从数据库查询
+    query := "SELECT user_id, name, created_at FROM user_table WHERE user_id = ?"
+    err = mdb.GetDB().GetContext(ctx, &userData, query, userID)
+    if err != nil {
+        return nil, errors.Wrap(err, "query database failed")
+    }
+    // 更新缓存
+    _ = mcache.Set(ctx, cacheKey, userData, 5*time.Minute)
+    return &userData, nil
+}
+```
+## 示例
+<example>
+// 良好实践：正确的错误处理和日志记录
+package service
+import (
+    "context"
+    "github.com/pkg/errors"
+    "amap-aos-activity/basic/common"
+    "amap-aos-activity/framework/mlogger"
+    "amap-aos-activity/model/user"
+)
+func GetUserProfile(ctx context.Context, userID string) (*user.Profile, *common.Error) {
+    // 参数验证
+    if userID == "" {
+        return nil, common.NewError(common.ErrCodeParam, "用户ID不能为空")
+    }
+    // 调用模型层
+    profile, err := user.GetProfileByID(ctx, userID)
+    if err != nil {
+        // 包装错误并记录日志
+        wrappedErr := errors.Wrap(err, "获取用户资料失败")
+        mlogger.XErrorf(ctx, "%+v", wrappedErr) // 记录堆栈信息
+        // 返回适当的业务错误
+        if errors.Is(err, user.ErrUserNotFound) {
+            return nil, common.NewError(common.ErrCodeNotFound, "用户不存在")
+        }
+        return nil, common.NewError(common.ErrCodeService, "获取用户资料失败")
+    }
+    return profile, nil
+}
+</example>
+<example type="invalid">
+// 不良实践：不规范的错误处理和日志记录
+package service
+import (
+    "context"
+    "fmt"
+    "log"
+    "amap-aos-activity/model/user"
+)
+func GetUserProfile(ctx context.Context, userID string) (*user.Profile, error) {
+    // 缺少参数验证
+    // 直接调用模型层
+    profile, err := user.GetProfileByID(ctx, userID)
+    if err != nil {
+        // 错误：使用fmt直接打印错误
+        fmt.Println("Error getting user profile:", err)
+        // 错误：使用标准log包而非项目日志框架
+        log.Printf("Failed to get profile for user %s: %v", userID, err)
+        // 错误：直接返回底层错误，没有包装或分类
+        return nil, err
+    }
+    return profile, nil
+}
+</example>
