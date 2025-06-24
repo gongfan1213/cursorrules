@@ -1,0 +1,496 @@
+
+---
+description: `此规则适用于go项目的单元测试开发规范，Go单元测试提供全面指南，规范测试结构、mock技术和断言方法，确保测试代码质量与可维护性。`
+globs:
+alwaysApply: false
+---
+# 中间件客户端调用规范
+## 关键规则
+- **所有HTTP和HSF等中间件客户端必须放在framework/client目录下**
+- **必须遵循统一的命名规范：服务功能+Service命名方式**
+- **必须使用Context作为第一个参数，支持分布式追踪和日志记录**
+- **中间件客户端必须从配置中心读取配置，不允许硬编码**
+- **中间件调用必须记录完整的请求和响应日志**
+- **必须实现统一的错误处理和返回机制**
+- **应对关键调用实现缓存机制，减少直接调用次数**
+- **请求和响应结构体必须实现JavaClassName方法（HSF特有）**
+- **HSF服务必须在init方法中注册模型**
+- **客户端调用需要进行合理的超时控制**
+## HTTP客户端标准实现
+### 客户端定义规范
+```go
+// 客户端标准定义
+type XXXHttpClient struct {
+    // 可选的客户端配置
+}
+// 必须定义统一的初始化方法
+func NewXXXHttpClient(ctx context.Context) *XXXHttpClient {
+    return &XXXHttpClient{}
+}
+```
+### 请求参数定义
+```go
+// 请求参数必须使用结构体定义
+type RequestParams struct {
+    // 请求字段
+    Field1 string `json:"field1"`
+    Field2 int    `json:"field2"`
+    // ...
+}
+```
+### 标准HTTP调用实现
+```go
+// 标准HTTP调用方法
+func (client *XXXHttpClient) SendRequest(ctx context.Context, params RequestParams) (ResponseType, error) {
+    // 1. 从配置中心获取URL配置
+    var conf simplehttp.URLSetting
+    urlConf := mconfig.UrlConfig()
+    if err := urlConf.UnmarshalKey("ConfigKey", &conf); err != nil || conf.URL == "" {
+        return nil, common.Errorf(common.ErrorInternal, "url conf miss")
+    }
+    // 2. 构建URL和请求参数
+    url := conf.URL + "/api/endpoint"
+    httpParams := map[string]string{
+        "param1": params.Field1,
+        "param2": types.IWrapper(params.Field2).String(),
+        // 必须加入追踪ID
+        "trace_id": eagleeye.GetTraceId(ctx),
+    }
+    // 3. 构建请求选项
+    opt := simplehttp.BuildOptions(&simplehttp.Options{
+        Method:           "GET", // 或 POST 等
+        Params:           httpParams,
+        Timeout:          conf.Timeout,
+        HostWithVip:      conf.VipHost,
+        RecordWithParams: httpcommon.RecordWithParams,
+    })
+    // 4. 发送请求并记录日志
+    respData, err := simplehttp.RequestWithContext(ctx, url, opt)
+    common.LogInfof(ctx, "log_type", "request info, params=%v, err=%v", params, err)
+    // 5. 错误处理
+    if err != nil {
+        return nil, common.Errorf(common.ErrorInternal, "request failed.err:%s", err.Error())
+    }
+    // 6. 解析响应
+    var response ResponseType
+    err = json.Unmarshal(respData, &response)
+    if err != nil {
+        return nil, common.Errorf(common.ErrorInternal, "unmarshal failed.err:%s", err.Error())
+    }
+    // 7. 返回结果
+    return response, nil
+}
+```
+### 带缓存的HTTP调用
+```go
+func GetDataWithCache(ctx context.Context, key string, params RequestParams) (ResponseType, error) {
+    var resp ResponseType
+    cacheKey := fmt.Sprintf("cache_key_prefix_%s", key)
+    // 使用缓存机制
+    err := mcache.GetLocalCacheFiveSecond(ctx).Once(ctx, cacheKey, &resp, 5*time.Second, func() (interface{}, error) {
+        // 调用实际API
+        data, e := SendRequest(ctx, params)
+        // 记录日志
+        common.LogDebugf(ctx, "module_name", "GetData, key:%s, data:%+v, err:%v", key, data, e)
+        // 错误处理
+        if e != nil {
+            return nil, errors.New(e.Error())
+        }
+        return data, nil
+    })
+    if err != nil {
+        return nil, err
+    }
+    return resp, nil
+}
+```
+## HSF客户端标准实现
+### 服务定义规范
+```go
+// 全局服务实例
+var XXXService = new(XXXServiceImpl)
+// 注册HSF模型
+func init() {
+    hsfCommon.RegisterModel(&ModelType1{})
+    hsfCommon.RegisterModel(&ModelType2{})
+    // 其他模型注册...
+}
+// 服务结构体定义
+type XXXServiceImpl struct {
+    // 方法定义，必须遵循标准方法签名
+    MethodName func(ctx context.Context, args []interface{}) (*ResponseType, error)
+}
+// 接口名配置
+func (s *XXXServiceImpl) InterfaceName() string {
+    return mconfig.UrlConfig().GetString("ServiceName.interfaceName")
+}
+// 版本配置
+func (s *XXXServiceImpl) Version() string {
+    return mconfig.UrlConfig().GetString("ServiceName.version")
+}
+// 组名配置
+func (s *XXXServiceImpl) Group() string {
+    return mconfig.UrlConfig().GetString("ServiceName.group")
+}
+// 超时配置
+func (s *XXXServiceImpl) TimeoutMs() int {
+    return mconfig.UrlConfig().GetInt("ServiceName.timeout")
+}
+```
+### 请求模型定义
+```go
+// 请求模型必须实现JavaClassName方法
+type RequestType struct {
+    Field1 string    `json:"field1" hessian:"field1"`
+    Field2 int64     `json:"field2" hessian:"field2"`
+    // ...
+}
+func (RequestType) JavaClassName() string {
+    return"com.package.RequestType"
+}
+// 响应模型必须实现JavaClassName方法
+type ResponseType struct {
+    Code    int32       `json:"code"`
+    Data    interface{} `json:"data"`
+    Success bool        `json:"success"`
+    // ...
+}
+func (ResponseType) JavaClassName() string {
+    return"com.package.ResponseType"
+}
+```
+### 标准HSF调用实现
+```go
+// 标准HSF调用方法
+func CallHSFService(ctx context.Context, request *RequestType) (*DataType, *common.Error) {
+    // 1. 调用HSF服务
+    hsfResp, e := XXXService.MethodName(ctx, []interface{}{request})
+    // 2. 记录请求和响应日志
+    reqJson, _ := json.Marshal(request)
+    respJson, _ := json.Marshal(hsfResp)
+    common.LogInfof(ctx, "hsf_call", "hsf resp:%s, err:%v, req:%s",
+        string(respJson), e, string(reqJson))
+    // 3. 错误处理
+    if e != nil {
+        return nil, common.Errorf(common.ErrorInternal, "HSF call failed.err:%s", e.Error())
+    }
+    // 4. 结果处理
+    if hsfResp != nil {
+        result := ParseResponseData(hsfResp.Data)
+        return result, nil
+    }
+    return nil, nil
+}
+// 解析响应数据的标准方法
+func ParseResponseData(data interface{}) *DataType {
+    if data == nil {
+        return nil
+    }
+    if items, ok := data.(SpecificResponseType); ok {
+        // 处理数据转换
+        result := &DataType{
+            // 数据转换逻辑
+        }
+        return result
+    }
+    return nil
+}
+```
+### 带缓存的HSF调用
+```go
+func GetHSFDataWithCache(ctx context.Context, param1, param2 string) (*DataType, error) {
+    var resp *DataType
+    cacheKey := fmt.Sprintf("hsf_cache_key_%s_%s", param1, param2)
+    // 使用缓存机制
+    err := mcache.GetLocalCacheFiveSecond(ctx).Once(ctx, cacheKey, &resp, 5*time.Second, func() (interface{}, error) {
+        // 构建HSF请求
+        request := &RequestType{
+            Field1: param1,
+            Field2: param2,
+        }
+        // 调用HSF服务
+        data, e := CallHSFService(ctx, request)
+        // 记录日志
+        common.LogDebugf(ctx, "hsf_module", "GetHSFData, key:%s, data:%+v, err:%v", cacheKey, data, e)
+        // 错误处理
+        if e != nil {
+            return nil, errors.New(e.Error())
+        }
+        return data, nil
+    })
+    if err != nil {
+        return nil, err
+    }
+    return resp, nil
+}
+```
+## 错误处理规范
+- **所有中间件调用都必须返回标准化的错误**
+- **错误必须包含错误码和错误信息**
+- **网络错误必须归类为InternalError**
+- **参数错误必须归类为InvalidError**
+- **业务逻辑错误必须根据具体场景进行分类**
+```go
+// 错误处理示例
+if err != nil {
+    // 网络错误
+    if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+        return nil, common.Errorf(common.ErrorTimeout, "request timeout: %s", err.Error())
+    }
+    // 一般错误
+    return nil, common.Errorf(common.ErrorInternal, "request failed: %s", err.Error())
+}
+// 业务错误
+if resp.Code != 200 {
+    return nil, common.Errorf(common.ErrorBusiness, "business error: %s", resp.Message)
+}
+```
+## 日志记录规范
+- **所有中间件调用必须记录请求和响应日志**
+- **日志必须包含追踪ID、请求参数和响应结果**
+- **敏感信息（如密码、token）必须在日志中脱敏**
+- **必须使用统一的日志模块和日志格式**
+```go
+// 标准日志示例
+common.LogInfof(ctx, "module_name", "method_name, param1=%v, param2=%v, resp=%s, err=%v",
+    param1, param2, respJson, err)
+```
+## 示例
+<example>
+// HTTP客户端调用示例
+package client
+import (
+    "amap-aos-activity/basic/common"
+    "amap-aos-activity/framework/mconfig"
+    "context"
+    "encoding/json"
+    "fmt"
+    "gitlab.alibaba-inc.com/amap-go/eagleeye-go"
+    "gitlab.alibaba-inc.com/amap-go/http-client/simplehttp"
+    httpcommon "gitlab.alibaba-inc.com/amap-go/http-client/common"
+    "time"
+)
+// 请求参数定义
+type SearchParams struct {
+    Query    string  `json:"query"`
+    Latitude float64 `json:"latitude"`
+    Longitude float64 `json:"longitude"`
+}
+// 响应结构定义
+type SearchResponse struct {
+    Code    int           `json:"code"`
+    Message string        `json:"message"`
+    Data    []SearchItem  `json:"data"`
+}
+type SearchItem struct {
+    ID      string  `json:"id"`
+    Name    string  `json:"name"`
+    Distance float64 `json:"distance"`
+}
+// 发送搜索请求
+func SendSearchRequest(ctx context.Context, params SearchParams) (*SearchResponse, *common.Error) {
+    // 从配置中获取URL
+    var conf simplehttp.URLSetting
+    urlConf := mconfig.UrlConfig()
+    if err := urlConf.UnmarshalKey("SearchService", &conf); err != nil || conf.URL == "" {
+        return nil, common.Errorf(common.ErrorInternal, "search service url conf miss")
+    }
+    // 构建请求参数
+    httpParams := map[string]string{
+        "query": params.Query,
+        "latitude": fmt.Sprintf("%f", params.Latitude),
+        "longitude": fmt.Sprintf("%f", params.Longitude),
+        "trace_id": eagleeye.GetTraceId(ctx),
+    }
+    // 构建请求选项
+    opt := simplehttp.BuildOptions(&simplehttp.Options{
+        Method:           "GET",
+        Params:           httpParams,
+        Timeout:          conf.Timeout,
+        HostWithVip:      conf.VipHost,
+        RecordWithParams: httpcommon.RecordWithParams,
+    })
+    // 发送请求
+    url := conf.URL + "/search/api"
+    respData, err := simplehttp.RequestWithContext(ctx, url, opt)
+    common.LogInfof(ctx, "search_service", "search request, params=%v, err=%v", params, err)
+    // 错误处理
+    if err != nil {
+        return nil, common.Errorf(common.ErrorInternal, "search request failed: %s", err.Error())
+    }
+    // 解析响应
+    var response SearchResponse
+    if err := json.Unmarshal(respData, &response); err != nil {
+        return nil, common.Errorf(common.ErrorInternal, "unmarshal search response failed: %s", err.Error())
+    }
+    // 业务错误处理
+    if response.Code != 200 {
+        return nil, common.Errorf(common.ErrorBusiness, "search business error: %s", response.Message)
+    }
+    return &response, nil
+}
+// 带缓存的搜索请求
+func SearchWithCache(ctx context.Context, params SearchParams) (*SearchResponse, error) {
+    var resp *SearchResponse
+    cacheKey := fmt.Sprintf("search_%s_%f_%f", params.Query, params.Latitude, params.Longitude)
+    err := mcache.GetLocalCacheFiveSecond(ctx).Once(ctx, cacheKey, &resp, 30*time.Second, func() (interface{}, error) {
+        result, e := SendSearchRequest(ctx, params)
+        if e != nil {
+            return nil, e
+        }
+        return result, nil
+    })
+    if err != nil {
+        return nil, err
+    }
+    return resp, nil
+}
+</example>
+<example>
+// HSF客户端调用示例
+package client
+import (
+    "amap-aos-activity/basic/common"
+    "amap-aos-activity/framework/mconfig"
+    "context"
+    "encoding/json"
+    "errors"
+    "fmt"
+    hsfCommon "gitlab.alibaba-inc.com/amap-go/hsf-go/common"
+    "time"
+)
+// 全局服务实例
+var ProductService = new(ProductServiceImpl)
+// 注册HSF模型
+func init() {
+    hsfCommon.RegisterModel(&ProductQueryRequest{})
+    hsfCommon.RegisterModel(&ProductQueryResponse{})
+    hsfCommon.RegisterModel(&ProductDetail{})
+}
+// 请求模型
+type ProductQueryRequest struct {
+    ProductId string   `json:"productId" hessian:"productId"`
+    Fields    []string `json:"fields" hessian:"fields"`
+}
+func (ProductQueryRequest) JavaClassName() string {
+    return"com.example.product.request.ProductQueryRequest"
+}
+// 响应模型
+type ProductQueryResponse struct {
+    Code    int32         `json:"code"`
+    Data    *ProductDetail `json:"data"`
+    Success bool          `json:"success"`
+    Message string        `json:"message"`
+}
+func (ProductQueryResponse) JavaClassName() string {
+    return"com.example.product.response.ProductQueryResponse"
+}
+// 产品详情
+type ProductDetail struct {
+    Id          string  `json:"id" hessian:"id"`
+    Name        string  `json:"name" hessian:"name"`
+    Price       int64   `json:"price" hessian:"price"`
+    Description string  `json:"description" hessian:"description"`
+}
+func (ProductDetail) JavaClassName() string {
+    return"com.example.product.model.ProductDetail"
+}
+// 服务结构体
+type ProductServiceImpl struct {
+    QueryProduct func(ctx context.Context, args []interface{}) (*ProductQueryResponse, error)
+}
+// 接口配置
+func (s *ProductServiceImpl) InterfaceName() string {
+    return mconfig.UrlConfig().GetString("ProductService.interfaceName")
+}
+func (s *ProductServiceImpl) Version() string {
+    return mconfig.UrlConfig().GetString("ProductService.version")
+}
+func (s *ProductServiceImpl) Group() string {
+    return mconfig.UrlConfig().GetString("ProductService.group")
+}
+func (s *ProductServiceImpl) TimeoutMs() int {
+    return mconfig.UrlConfig().GetInt("ProductService.timeout")
+}
+// 查询产品信息
+func GetProductDetail(ctx context.Context, productId string) (*ProductDetail, *common.Error) {
+    // 构建请求
+    request := &ProductQueryRequest{
+        ProductId: productId,
+        Fields: []string{"id", "name", "price", "description"},
+    }
+    // 调用HSF服务
+    resp, err := ProductService.QueryProduct(ctx, []interface{}{request})
+    // 记录日志
+    reqJson, _ := json.Marshal(request)
+    respJson, _ := json.Marshal(resp)
+    common.LogInfof(ctx, "product_service", "query product, req=%s, resp=%s, err=%v",
+        string(reqJson), string(respJson), err)
+    // 错误处理
+    if err != nil {
+        return nil, common.Errorf(common.ErrorInternal, "query product failed: %s", err.Error())
+    }
+    // 结果处理
+    if resp != nil {
+        if !resp.Success || resp.Code != 200 {
+            return nil, common.Errorf(common.ErrorBusiness, "business error: %s", resp.Message)
+        }
+        return resp.Data, nil
+    }
+    return nil, common.Errorf(common.ErrorInternal, "empty response")
+}
+// 带缓存的产品查询
+func GetProductWithCache(ctx context.Context, productId string) (*ProductDetail, error) {
+    var product *ProductDetail
+    cacheKey := fmt.Sprintf("product_detail_%s", productId)
+    err := mcache.GetLocalCacheFiveSecond(ctx).Once(ctx, cacheKey, &product, 5*time.Minute, func() (interface{}, error) {
+        detail, e := GetProductDetail(ctx, productId)
+        if e != nil {
+            return nil, errors.New(e.Error())
+        }
+        return detail, nil
+    })
+    if err != nil {
+        return nil, err
+    }
+    return product, nil
+}
+</example>
+<example type="invalid">
+// 错误示例：硬编码URL和缺少日志记录
+package client
+import (
+    "context"
+    "encoding/json"
+    "net/http"
+    "io/ioutil"
+)
+// 错误1: 硬编码URL
+// 错误2: 没有使用配置中心
+// 错误3: 没有传递和使用context
+func BadSearchRequest(query string) ([]byte, error) {
+    // 硬编码URL
+    url := "http://search.example.com/api?query=" + query
+    // 没有超时控制
+    resp, err := http.Get(url)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+    // 没有日志记录
+    return ioutil.ReadAll(resp.Body)
+}
+// 错误示例：HSF调用不规范
+var badHsfService = struct {
+    Method func(args []interface{}) (interface{}, error)
+}{}
+// 错误1: 不遵循标准接口定义
+// 错误2: 没有使用Context参数
+// 错误3: 没有注册模型
+// 错误4: 错误处理不规范
+func BadHsfCall(id string) interface{} {
+    result, _ := badHsfService.Method([]interface{}{id})
+    // 忽略错误处理
+    return result
+}
+</example>
